@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED true)
 
 include(FetchContent)
 
+#Fmt lib
+FetchContent_Declare(fmt
+        GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+        GIT_TAG master
+        )
+FetchContent_MakeAvailable(fmt)
+
 #NumCpp contents
 FetchContent_Declare(
         NumCpp
@@ -27,4 +34,4 @@ endif()
 include_directories(${sciplot_content_SOURCE_DIR} data)
 
 add_executable(16833_HW2_EKF src/main.cpp)
-target_link_libraries(${PROJECT_NAME} NumCpp)
+target_link_libraries(${PROJECT_NAME} NumCpp fmt::fmt)
