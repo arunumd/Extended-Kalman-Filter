@@ -1,4 +1,3 @@
-#include "sciplot/sciplot.hpp"
 #include "NumCpp.hpp"
 #include "fmt/color.h"
 #include <string>
@@ -7,8 +6,6 @@
 #include <iostream>
 #include <memory>
 #include "tuple"
-
-using namespace sciplot;
 
 typedef nc::NdArray<double> ncD;
 
@@ -63,15 +60,26 @@ void process_input_data(std::vector<std::unique_ptr<slam_data_np>> &slam_data_ve
 }
 
 std::tuple<int, ncD, ncD> init_landmarks(ncD &measurement, ncD &measurement_cov, ncD &pose, ncD &pose_cov) {
-    int k = std::floor(measurement.shape().rows/2);
+    int k = std::floor(measurement.shape().rows / 2);
     double x, y, theta;
     ncD Z;
-    x = pose(0,0);
-    y = pose(1,0);
-    theta = pose(2,0);
-    Z = measurement.reshape(6,2);
-    Z.print();
-    return std::make_tuple(1, nc::zeros<double>(1,1),  nc::zeros<double>(1,1));
+    x = pose(0, 0);
+    y = pose(1, 0);
+    theta = pose(2, 0);
+    Z = measurement.reshape(6, 2);
+    auto beta = Z(Z.rSlice(), 0);
+    auto r = Z(Z.rSlice(), 1);
+    ncD landmark_cov = {measurement_cov(0, 0), measurement_cov(1, 1),
+                        measurement_cov(0, 0), measurement_cov(1, 1),
+                        measurement_cov(0, 0), measurement_cov(1, 1),
+                        measurement_cov(0, 0), measurement_cov(1, 1),
+                        measurement_cov(0, 0), measurement_cov(1, 1),
+                        measurement_cov(0, 0), measurement_cov(1, 1)};
+    landmark_cov = nc::diag(landmark_cov);
+    for (size_t i = 0; i <= k; i++) {
+        
+    }
+    return std::make_tuple(1, nc::zeros<double>(1, 1), nc::zeros<double>(1, 1));
 }
 
 int main(int argc, char **argv) {
@@ -91,19 +99,19 @@ int main(int argc, char **argv) {
     slam_parameters param;
     auto control_cov = ncD(3, 3);
     control_cov = nc::eye<double>(3);
-    control_cov(0,0) = param.sig_x2;
-    control_cov(1,1) = param.sig_y2;
-    control_cov(2,2) = param.sig_alpha2;
+    control_cov(0, 0) = param.sig_x2;
+    control_cov(1, 1) = param.sig_y2;
+    control_cov(2, 2) = param.sig_alpha2;
     auto measurement_cov = ncD(2, 2);
     measurement_cov = nc::eye<double>(2);
-    measurement_cov(0,0) = param.sig_beta2;
-    measurement_cov(1,1) = param.sig_r2;
-    auto pose = nc::zeros<double>(3,1);
-    auto pose_cov = ncD(3,3);
+    measurement_cov(0, 0) = param.sig_beta2;
+    measurement_cov(1, 1) = param.sig_r2;
+    auto pose = nc::zeros<double>(3, 1);
+    auto pose_cov = ncD(3, 3);
     pose_cov = nc::eye<double>(3);
-    pose_cov(0,0) = std::pow(0.02, 2);
-    pose_cov(1,1) = std::pow(0.02, 2);
-    pose_cov(2,2) = std::pow(0.1, 2);
+    pose_cov(0, 0) = std::pow(0.02, 2);
+    pose_cov(1, 1) = std::pow(0.02, 2);
+    pose_cov(2, 2) = std::pow(0.1, 2);
     init_landmarks(measurement, measurement_cov, pose, pose_cov);
     return 0;
 }
