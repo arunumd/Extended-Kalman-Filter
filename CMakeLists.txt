@@ -19,23 +19,20 @@ include(FetchContent)
 #Fmt lib
 FetchContent_Declare(fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG master
-        )
+        GIT_TAG master)
 FetchContent_MakeAvailable(fmt)
 
 #NumCpp contents
 FetchContent_Declare(
         NumCpp
         GIT_REPOSITORY "https://github.com/dpilger26/NumCpp.git"
-        GIT_TAG "Version_2.7.0"
-)
+        GIT_TAG "Version_2.7.0")
 FetchContent_MakeAvailable(NumCpp)
 
 FetchContent_Declare(
         matplotlib
         GIT_REPOSITORY https://github.com/lava/matplotlib-cpp.git
-        GIT_TAG        ef0383f1315d32e0156335e10b82e90b334f6d9f
-)
+        GIT_TAG        ef0383f1315d32e0156335e10b82e90b334f6d9f)
 FetchContent_GetProperties(matplotlib)
 if(NOT matplotlib_POPULATED)
     FetchContent_Populate(matplotlib)
@@ -43,9 +40,7 @@ endif()
 include_directories(SYSTEM ${matplotlib_SOURCE_DIR})
 
 file(COPY data/data.txt DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+add_subdirectory(boost-cmake)
 
 add_executable(16833_HW2_EKF src/main.cpp)
-target_link_libraries(${PROJECT_NAME} NumCpp fmt::fmt
-        ${PYTHON_LIBRARIES}
-        Python3::NumPy
-        )
+target_link_libraries(${PROJECT_NAME} PUBLIC Boost::boost NumCpp fmt::fmt ${PYTHON_LIBRARIES} Python3::NumPy)

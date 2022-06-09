@@ -76,25 +76,19 @@ std::tuple<int, ncD, ncD> init_landmarks(ncD &measurement, ncD &measurement_cov,
                         measurement_cov(0, 0), measurement_cov(1, 1),
                         measurement_cov(0, 0), measurement_cov(1, 1)};
     landmark_cov = nc::diag(landmark_cov);
-    for (size_t i = 0; i <= k; i++) {
-        
+    ncD landmark = nc::empty<double>(2 * k, 1);
+    for (size_t i = 0; i < k; i++) {
+        landmark(2 * i, 0) = (x + r[i] * std::cos(theta + beta[i]));
+        landmark((2 * i) + 1, 0) = (x + r[i] * std::sin(theta + beta[i]));
     }
-    return std::make_tuple(1, nc::zeros<double>(1, 1), nc::zeros<double>(1, 1));
+    return std::make_tuple(k, landmark, landmark_cov);
 }
 
 int main(int argc, char **argv) {
     std::vector<std::unique_ptr<slam_data_np>> slam_data_vec_np;
     process_input_data(slam_data_vec_np);
-//    for (auto &item: slam_data_vec_np) {
-//        fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-//                   "NumCpp measurement data :\n");
-//        item->measurement.print();
-//        std::cout << "NumCpp control data :\n";
-//        item->control.print();
-//    }
     auto measurement = slam_data_vec_np[0]->measurement;
     measurement.reshape(12, 1);
-    std::cout << measurement.shape();
     int time_step = 1;
     slam_parameters param;
     auto control_cov = ncD(3, 3);
