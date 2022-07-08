@@ -59,6 +59,15 @@ void process_input_data(std::vector<std::unique_ptr<slam_data_np>> &slam_data_ve
     }
 }
 
+/**
+ *
+ * @param measurement 1 x 12 Measurement data vector of the form [beta1, r1, beta2, r2, beta3, r3, ...]
+ * @param measurement_cov 2 x 2 Measurement covariance matrix with diagonal elements sig_beta2, and sig_r2
+ * @param pose 3 x 1 Initial pose vector of the robot. The elements of initial pose are zero
+ * @param pose_cov 3 x 3 Initial pose covariance diagonal matrix
+ * @return std::tuple(k, landmark, landmark_cov) Where 'k' is the number of landmarks; 'landmark' is the GCS
+ *         pose of the landmark; and 'landmark_cov' is a 12 x 12 landmark covariance matrix
+ */
 std::tuple<int, ncD, ncD> init_landmarks(ncD &measurement, ncD &measurement_cov, ncD &pose, ncD &pose_cov) {
     int k = std::floor(measurement.shape().rows / 2);
     double x, y, theta;
@@ -106,6 +115,10 @@ int main(int argc, char **argv) {
     pose_cov(0, 0) = std::pow(0.02, 2);
     pose_cov(1, 1) = std::pow(0.02, 2);
     pose_cov(2, 2) = std::pow(0.1, 2);
-    init_landmarks(measurement, measurement_cov, pose, pose_cov);
+    auto &&[k, landmark, landmark_cov] = init_landmarks(measurement, measurement_cov, pose, pose_cov);
+    auto X = nc::vstack({pose, landmark});
+    auto P = nc::vstack({nc::hstack({pose_cov, nc::zeros<double>(3, 2 * k)}),
+                         nc::hstack({nc::zeros<double>(2 * k, 3), landmark_cov})});
+    auto previous_X = X;
     return 0;
 }
