@@ -6,6 +6,9 @@
 #include <iostream>
 #include <memory>
 #include "tuple"
+#include "matplotlibcpp.h"
+
+namespace plt = matplotlibcpp;
 
 typedef nc::NdArray<double> ncD;
 
@@ -93,6 +96,31 @@ std::tuple<int, ncD, ncD> init_landmarks(ncD &measurement, ncD &measurement_cov,
     return std::make_tuple(k, landmark, landmark_cov);
 }
 
+void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string& color="r") {
+    ncD U, S, Vt;
+    nc::linalg::svd(cov, U, S, Vt);
+    auto a = S(0, 0);
+    auto b = S(1, 1);
+    auto vx = U(0, 0);
+    auto vy = U(0, 1);
+    auto theta = std::atan(vy / vx);
+    ncD R = {{nc::cos(theta), -nc::sin(theta)},
+             {nc::sin(theta), nc::cos(theta)}};
+    auto phi = nc::arange<double>(0, 2 * M_PI, M_PI / 50);
+    ncD rot;
+    for (size_t i = 0; i < 100; i++) {
+        ncD rect = {2.4477 * std::sqrt(a) * nc::cos(phi[i]), 2.4477 * std::sqrt(b) * nc::sin(phi[i])};
+        rect = rect.reshape(2, 1);
+        auto tf_rect = nc::matmul(R,rect) + mu;
+        if (rot.isempty()) rot = tf_rect;
+        else rot = nc::append(rot, tf_rect, nc::Axis::COL);
+    }
+    auto x = (rot(0, rot.cSlice())).toStlVector();
+    auto y = (rot(1, rot.cSlice())).toStlVector();
+    plt::plot(x, y, color);
+    plt::show();
+}
+
 int main(int argc, char **argv) {
     std::vector<std::unique_ptr<slam_data_np>> slam_data_vec_np;
     process_input_data(slam_data_vec_np);
@@ -120,5 +148,10 @@ int main(int argc, char **argv) {
     auto P = nc::vstack({nc::hstack({pose_cov, nc::zeros<double>(3, 2 * k)}),
                          nc::hstack({nc::zeros<double>(2 * k, 3), landmark_cov})});
     auto previous_X = X;
+    ncD mu_dummy = {0, 0};
+    mu_dummy.reshape(2, 1);
+    ncD cov_dummy = {{0.0004, 0.0},
+                     {0.0,    0.0004}};
+    draw_cov_ellipse(mu_dummy, cov_dummy, "b");
     return 0;
 }
