@@ -63,7 +63,8 @@ void process_input_data(std::vector<std::unique_ptr<slam_data_np>> &slam_data_ve
 }
 
 /**
- *
+ * Function to initialize the GCS coordinates of the landmarks with respect to the robot's initial pose. This function
+ * assumes the initial position of the robot is at the origin (0, 0) with angle of 0 degrees w.r.t x-axis.
  * @param measurement 1 x 12 Measurement data vector of the form [beta1, r1, beta2, r2, beta3, r3, ...]
  * @param measurement_cov 2 x 2 Measurement covariance matrix with diagonal elements sig_beta2, and sig_r2
  * @param pose 3 x 1 Initial pose vector of the robot. The elements of initial pose are zero
