@@ -70,7 +70,7 @@ void process_input_data(std::vector<std::unique_ptr<slam_data_np>> &slam_data_ve
  * @param pose 3 x 1 Initial pose vector of the robot. The elements of initial pose are zero
  * @param pose_cov 3 x 3 Initial pose covariance diagonal matrix
  * @return std::tuple(k, landmark, landmark_cov) Where 'k' is the number of landmarks; 'landmark' is the GCS
- *         pose of the landmark; and 'landmark_cov' is a 12 x 12 landmark covariance matrix
+ *         pose matrix (12 x 1 matrix) of the landmarks; and 'landmark_cov' is a 12 x 12 landmark covariance matrix
  */
 std::tuple<int, ncD, ncD> init_landmarks(ncD &measurement, ncD &measurement_cov, ncD &pose, ncD &pose_cov) {
     int k = std::floor(measurement.shape().rows / 2);
@@ -92,7 +92,7 @@ std::tuple<int, ncD, ncD> init_landmarks(ncD &measurement, ncD &measurement_cov,
     ncD landmark = nc::empty<double>(2 * k, 1);
     for (size_t i = 0; i < k; i++) {
         landmark(2 * i, 0) = (x + r[i] * std::cos(theta + beta[i]));
-        landmark((2 * i) + 1, 0) = (x + r[i] * std::sin(theta + beta[i]));
+        landmark((2 * i) + 1, 0) = (y + r[i] * std::sin(theta + beta[i]));
     }
     return std::make_tuple(k, landmark, landmark_cov);
 }
@@ -130,6 +130,16 @@ void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string &color = 
     auto y = (rot(1, rot.cSlice())).toStlVector();
     plt::plot(x, y, color);
     plt::show();
+}
+
+void draw_trajectory_and_map(ncD &X, ncD &last_X, ncD &P, double t) {
+    draw_cov_ellipse(X(nc::Slice(0, 2), 0), P(nc::Slice(0, 2), nc::Slice(0, 2)));
+    std::vector<double> x = {last_X[0], X[0]};
+    std::vector<double> y = {last_X[1], X[1]};
+    plt::plot(x, y, "b");
+    x = {X[0]};
+    y = {X[1]};
+    plt::scatter(x, y, 3, {{"marker","*"}});
 }
 
 int main(int argc, char **argv) {
