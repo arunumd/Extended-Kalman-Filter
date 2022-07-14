@@ -96,7 +96,17 @@ std::tuple<int, ncD, ncD> init_landmarks(ncD &measurement, ncD &measurement_cov,
     return std::make_tuple(k, landmark, landmark_cov);
 }
 
-void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string& color="r") {
+/**
+ * Function to plot a ellipse based on a covariance matrix and mean. The major and minor axes (a and b)
+ * of the ellipse are obtained from the diagonal matrix("S") of the covariance matrix after Singular value decomposition.
+ * Theta is obtained from the elements of the left singular matrix. Later, the ellipse is plotted as a connection of a
+ * series of lines at a high resolution to mimic a curved surface. This function derives from the knowledge obtained from
+ * this link: https://www.visiondummy.com/2014/04/draw-error-ellipse-representing-covariance-matrix/
+ * @param mu Mean (2 x 1 matrix) of the distribution for plotting the covariance ellipse
+ * @param cov Covariance matrix (2 x 2 matrix) of the distribution corresponding to the ellipse
+ * @param color The color of the ellipse used for plotting in matplotlib
+ */
+void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string &color = "r") {
     ncD U, S, Vt;
     nc::linalg::svd(cov, U, S, Vt);
     auto a = S(0, 0);
@@ -111,7 +121,7 @@ void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string& color="r
     for (size_t i = 0; i < 100; i++) {
         ncD rect = {2.4477 * std::sqrt(a) * nc::cos(phi[i]), 2.4477 * std::sqrt(b) * nc::sin(phi[i])};
         rect = rect.reshape(2, 1);
-        auto tf_rect = nc::matmul(R,rect) + mu;
+        auto tf_rect = nc::matmul(R, rect) + mu;
         if (rot.isempty()) rot = tf_rect;
         else rot = nc::append(rot, tf_rect, nc::Axis::COL);
     }
@@ -148,10 +158,5 @@ int main(int argc, char **argv) {
     auto P = nc::vstack({nc::hstack({pose_cov, nc::zeros<double>(3, 2 * k)}),
                          nc::hstack({nc::zeros<double>(2 * k, 3), landmark_cov})});
     auto previous_X = X;
-    ncD mu_dummy = {0, 0};
-    mu_dummy.reshape(2, 1);
-    ncD cov_dummy = {{0.0004, 0.0},
-                     {0.0,    0.0004}};
-    draw_cov_ellipse(mu_dummy, cov_dummy, "b");
     return 0;
 }
