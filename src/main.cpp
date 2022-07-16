@@ -129,7 +129,6 @@ void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string &color = 
     auto x = (rot(0, rot.cSlice())).toStlVector();
     auto y = (rot(1, rot.cSlice())).toStlVector();
     plt::plot(x, y, color);
-    plt::show();
 }
 
 void draw_trajectory_and_map(ncD &X, ncD &last_X, ncD &P, double t) {
@@ -139,7 +138,16 @@ void draw_trajectory_and_map(ncD &X, ncD &last_X, ncD &P, double t) {
     plt::plot(x, y, "b");
     x = {X[0]};
     y = {X[1]};
-    plt::scatter(x, y, 3, {{"marker","*"}});
+    plt::scatter(x, y, 3, {{"marker", "*"}});
+    if (t == 0) {
+        for (size_t i = 0; i < 6; i++) {
+            auto mu = X(nc::Slice(3 + i * 2, 3 + i * 2 + 2), 0);
+            auto cov = P(nc::Slice(3 + i * 2, 3 + 2 * i + 2), nc::Slice(3 + 2 * i, 3 + 2 * i + 2));
+            draw_cov_ellipse(mu, cov, "r");
+        }
+    }
+    plt::draw();
+    plt::show();
 }
 
 int main(int argc, char **argv) {
@@ -169,5 +177,6 @@ int main(int argc, char **argv) {
     auto P = nc::vstack({nc::hstack({pose_cov, nc::zeros<double>(3, 2 * k)}),
                          nc::hstack({nc::zeros<double>(2 * k, 3), landmark_cov})});
     auto previous_X = X;
+    draw_trajectory_and_map(X, previous_X, P, 0);
     return 0;
 }
