@@ -98,7 +98,7 @@ std::tuple<int, ncD, ncD> init_landmarks(ncD &measurement, ncD &measurement_cov,
 }
 
 /**
- * Function to plot a ellipse based on a covariance matrix and mean. The major and minor axes (a and b)
+ * Function to plot an ellipse based on a covariance matrix and mean. The major and minor axes (a and b)
  * of the ellipse are obtained from the diagonal matrix("S") of the covariance matrix after Singular value decomposition.
  * Theta is obtained from the elements of the left singular matrix. Later, the ellipse is plotted as a connection of a
  * series of lines at a high resolution to mimic a curved surface. This function derives from the knowledge obtained from
@@ -107,7 +107,7 @@ std::tuple<int, ncD, ncD> init_landmarks(ncD &measurement, ncD &measurement_cov,
  * @param cov Covariance matrix (2 x 2 matrix) of the distribution corresponding to the ellipse
  * @param color The color of the ellipse used for plotting in matplotlib
  */
-void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string &color = "r") {
+void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string &color = "b") {
     ncD U, S, Vt;
     nc::linalg::svd(cov, U, S, Vt);
     auto a = S(0, 0);
@@ -131,6 +131,13 @@ void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string &color = 
     plt::plot(x, y, color);
 }
 
+/**
+ *
+ * @param X
+ * @param last_X
+ * @param P
+ * @param t
+ */
 void draw_trajectory_and_map(ncD &X, ncD &last_X, ncD &P, double t) {
     draw_cov_ellipse(X(nc::Slice(0, 2), 0), P(nc::Slice(0, 2), nc::Slice(0, 2)));
     std::vector<double> x = {last_X[0], X[0]};
@@ -148,6 +155,35 @@ void draw_trajectory_and_map(ncD &X, ncD &last_X, ncD &P, double t) {
     }
     plt::draw();
     plt::show();
+}
+
+/**
+ *
+ * @param X
+ * @param P
+ * @param control
+ * @param control_cov
+ * @param k
+ * @return
+ */
+std::tuple<ncD, ncD> predict(ncD &X, ncD &P, ncD &control, ncD &control_cov, size_t k) {
+    auto d = control(0, 0);
+    auto alpha = control(0, 1);
+    auto x = X(0, 0);
+    auto y = X(0, 1);
+    auto theta = X(0, 2);
+    auto A = nc::zeros<double>(3 + 2 * k, 3 + 2 * k);
+    auto B = nc::zeros<double>(3 + 2 * k, 3 + 2 * k);
+    auto R = nc::vstack({(nc::hstack({control_cov, nc::zeros<double>(3, 2 * k)})),
+                         nc::zeros<double>(2 * k, 2 * k + 3)});
+    A(nc::Slice(0, 3), nc::Slice(0, 3)) = {{1, 0, -d * sin(theta)},
+                                           {0, 1, d * cos(theta),},
+                                           {0, 0, 1}};
+    B(nc::Slice(0, 3), nc::Slice(0, 3)) = {{cos(theta), -sin(theta), 0},
+                                           {sin(theta), cos(theta),  0},
+                                           {0,          0,           1}};
+    auto P_prediction = multiply(multiply(A, P), A.transpose()) + multiply(multiply(B, R), B.transpose());
+
 }
 
 int main(int argc, char **argv) {
@@ -178,5 +214,11 @@ int main(int argc, char **argv) {
                          nc::hstack({nc::zeros<double>(2 * k, 3), landmark_cov})});
     auto previous_X = X;
     draw_trajectory_and_map(X, previous_X, P, 0);
+    for (auto &slam_data: slam_data_vec_np) {
+        /*Perform control actions*/
+        auto &control = slam_data->control;
+        auto &&[X_pre, P_pre] = predict(X, P, control, control_cov, k);
+
+    }
     return 0;
 }
