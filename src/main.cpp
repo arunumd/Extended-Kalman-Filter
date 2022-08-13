@@ -62,6 +62,22 @@ void process_input_data(std::vector<std::unique_ptr<slam_data_np>> &slam_data_ve
     }
 }
 
+auto nonlinear_measurement(std::vector<double> &X, size_t k) {
+    double x = X[0];
+    double y = X[1];
+    double theta = X[2];
+    std::vector<double> lx, ly;
+    for (size_t i = 3; i <= X.size(); i++) {
+        if (i % 2 == 0) ly.emplace_back(X[i]);
+        else lx.emplace_back(X[i]);
+    }
+}
+
+double warp2pi(double angle_rad) {
+// TODO: warps an angle in [-pi, pi]. Used in the update step.
+    return angle_rad - 2 * M_PI * std::floor((angle_rad + M_PI) / (2 * M_PI));
+}
+
 /**
  * Function to initialize the GCS coordinates of the landmarks with respect to the robot's initial pose. This function
  * assumes the initial position of the robot is at the origin (0, 0) with angle of 0 degrees w.r.t x-axis.
@@ -166,7 +182,7 @@ void draw_trajectory_and_map(ncD &X, ncD &last_X, ncD &P, double t) {
  * @param k
  * @return
  */
-std::tuple<ncD, ncD> predict(ncD &X, ncD &P, ncD &control, ncD &control_cov, size_t k) {
+auto predict(ncD &X, ncD &P, ncD &control, ncD &control_cov, size_t k) {
     auto d = control(0, 0);
     auto alpha = control(0, 1);
     auto x = X(0, 0);
@@ -176,14 +192,52 @@ std::tuple<ncD, ncD> predict(ncD &X, ncD &P, ncD &control, ncD &control_cov, siz
     auto B = nc::zeros<double>(3 + 2 * k, 3 + 2 * k);
     auto R = nc::vstack({(nc::hstack({control_cov, nc::zeros<double>(3, 2 * k)})),
                          nc::zeros<double>(2 * k, 2 * k + 3)});
-    A(nc::Slice(0, 3), nc::Slice(0, 3)) = {{1, 0, -d * sin(theta)},
-                                           {0, 1, d * cos(theta),},
-                                           {0, 0, 1}};
-    B(nc::Slice(0, 3), nc::Slice(0, 3)) = {{cos(theta), -sin(theta), 0},
-                                           {sin(theta), cos(theta),  0},
-                                           {0,          0,           1}};
-    auto P_prediction = multiply(multiply(A, P), A.transpose()) + multiply(multiply(B, R), B.transpose());
+    A.put(nc::Slice(0, 3), nc::Slice(0, 3), {{1, 0, -d * sin(theta)},
+                                             {0, 1, d * cos(theta)},
+                                             {0, 0, 1}});
+    B.put(nc::Slice(0, 3), nc::Slice(0, 3), {{cos(theta), -sin(theta), 0},
+                                             {sin(theta), cos(theta),  0},
+                                             {0,          0,           1}});
+    auto P_prediction =
+            matmul<double>(matmul<double>(A, P), A.transpose()) + matmul<double>(matmul<double>(B, R), B.transpose());
+    ncD new_pose = {x + d * std::cos(theta),
+                    y + d * std::sin(theta),
+                    theta + alpha};
+    ncD X_prediction = nc::vstack({new_pose.transpose(), (X(nc::Slice(3, 2 * k + 3), X.cSlice()))});
+    return std::make_tuple(X_prediction, P_prediction);
+}
 
+auto update(ncD &X_pre, ncD &P_pre, ncD &measurement, ncD &measurement_cov, size_t k) {
+    auto z = measurement.reshape(6, 2);
+    auto lx = z(z.rSlice(), 0).toStlVector();
+    auto ly = z(z.rSlice(), 1).toStlVector();
+    auto x = X_pre(0, 0);
+    auto y = X_pre(0, 1);
+    auto theta = X_pre(0, 2);
+    ncD Q = {measurement_cov(0, 0), measurement_cov(1, 1),
+             measurement_cov(0, 0), measurement_cov(1, 1),
+             measurement_cov(0, 0), measurement_cov(1, 1),
+             measurement_cov(0, 0), measurement_cov(1, 1),
+             measurement_cov(0, 0), measurement_cov(1, 1),
+             measurement_cov(0, 0), measurement_cov(1, 1)};
+    auto Ht = nc::zeros<double>(2 * k, 3 + 2 * k);
+    for (size_t i = 0; i <= k; i++) {
+        // Measurement Jacobian w.r.t. pose (2 x 3)
+        ncD Hp = {{(ly[i] - y) / (std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2)),
+                          -(lx[i] - x) / (std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2)),          -1},
+                  {-(lx[i] - x) / std::sqrt(std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2)),
+                          -(ly[i] - y) / std::sqrt(std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2)), 0}};
+        Ht.put(nc::Slice(2 * i, 2 * (i + 1)), nc::Slice(0, 3), Hp);
+        ncD Hl = {{(ly[i] - y) / (std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2)),
+                          (lx[i] - x) / (std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2))},
+                  {(lx[i] - x) / std::sqrt(std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2)),
+                          (ly[i] - y) / std::sqrt(std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2))}};
+        Ht.put(nc::Slice(2 * i, 2 * (i + 1)), nc::Slice(3 + 2 * i, 3 + 2 * (i + 1)), Hl);
+    }
+    // Kalman Gain (15 x 12)
+    auto Kt = matmul<double>(matmul<double>(P_pre, Ht.transpose()),
+                             nc::linalg::inv(matmul<double>(matmul<double>(Ht, P_pre), (Ht.transpose() + Q))));
+    return std::make_tuple();
 }
 
 int main(int argc, char **argv) {
@@ -218,7 +272,7 @@ int main(int argc, char **argv) {
         /*Perform control actions*/
         auto &control = slam_data->control;
         auto &&[X_pre, P_pre] = predict(X, P, control, control_cov, k);
-
+        break;
     }
     return 0;
 }
