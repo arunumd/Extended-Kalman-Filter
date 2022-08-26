@@ -153,6 +153,12 @@ void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string &color = 
     plt::plot(x, y, color);
 }
 
+void draw_trajectory_and_prediction(ncD &X, ncD &P) {
+//    X(nc::Slice(0, 2), X.cSlice()).print();
+    draw_cov_ellipse(X(nc::Slice(0, 2), X.cSlice()), P(nc::Slice(0, 2), nc::Slice(0, 2)), "m");
+    plt::draw();
+}
+
 /**
  *
  * @param X
@@ -161,6 +167,7 @@ void draw_cov_ellipse(const ncD &mu, const ncD &cov, const std::string &color = 
  * @param t
  */
 void draw_trajectory_and_map(ncD &X, ncD &last_X, ncD &P, double t) {
+//    plt::ion();
     draw_cov_ellipse(X(nc::Slice(0, 2), 0), P(nc::Slice(0, 2), nc::Slice(0, 2)));
     std::vector<double> x = {last_X[0], X[0]};
     std::vector<double> y = {last_X[1], X[1]};
@@ -176,7 +183,6 @@ void draw_trajectory_and_map(ncD &X, ncD &last_X, ncD &P, double t) {
         }
     }
     plt::draw();
-    plt::show();
 }
 
 /**
@@ -214,8 +220,7 @@ auto predict(ncD &X, ncD &P, ncD &control, ncD &control_cov, size_t k) {
 }
 
 auto update(ncD &X_pre, ncD &P_pre, ncD &measurement, ncD &measurement_cov, size_t k) {
-    auto z = measurement;
-    z.reshape(6, 2);
+    auto z = measurement.copy().reshape(6, 2);
     auto lx = z(z.rSlice(), 0).toStlVector();
     auto ly = z(z.rSlice(), 1).toStlVector();
     auto x = X_pre(0, 0);
@@ -281,13 +286,20 @@ int main(int argc, char **argv) {
     auto P = nc::vstack({nc::hstack({pose_cov, nc::zeros<double>(3, 2 * k)}),
                          nc::hstack({nc::zeros<double>(2 * k, 3), landmark_cov})});
     auto previous_X = X;
+    plt::backend("TkAgg");
     draw_trajectory_and_map(X, previous_X, P, 0);
-    for (size_t i = 0; i < slam_data_vec_np.size(); i++) {
+    for (size_t i = 0; i < slam_data_vec_np.size() - 1; i++) {
         /*Perform control actions*/
         auto &control = slam_data_vec_np[i]->control;
         auto &&[X_pre, P_pre] = predict(X, P, control, control_cov, k);
+        draw_trajectory_and_prediction(X_pre, P_pre);
         std::tie(X, P) = update(X_pre, P_pre, slam_data_vec_np[i + 1]->measurement, measurement_cov, k);
-        break;
+        draw_trajectory_and_map(X, previous_X, P, time_step);
+        plt::show(false);
+        plt::pause(0.5);
+        previous_X = X;
+        time_step += 1;
     }
+    plt::pause(0);
     return 0;
 }
