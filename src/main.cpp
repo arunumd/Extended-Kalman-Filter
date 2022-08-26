@@ -62,20 +62,26 @@ void process_input_data(std::vector<std::unique_ptr<slam_data_np>> &slam_data_ve
     }
 }
 
+double warp2pi(double angle_rad) {
+// TODO: warps an angle in [-pi, pi]. Used in the update step.
+    return angle_rad - 2 * M_PI * std::floor((angle_rad + M_PI) / (2 * M_PI));
+}
+
 auto nonlinear_measurement(std::vector<double> &X, size_t k) {
     double x = X[0];
     double y = X[1];
     double theta = X[2];
     std::vector<double> lx, ly;
-    for (size_t i = 3; i <= X.size(); i++) {
+    for (size_t i = 3; i < X.size(); i++) {
         if (i % 2 == 0) ly.emplace_back(X[i]);
         else lx.emplace_back(X[i]);
     }
-}
-
-double warp2pi(double angle_rad) {
-// TODO: warps an angle in [-pi, pi]. Used in the update step.
-    return angle_rad - 2 * M_PI * std::floor((angle_rad + M_PI) / (2 * M_PI));
+    auto nl_measurements = std::vector<double>(2 * k, 0);
+    for (size_t i = 0; i < k; i++) {
+        nl_measurements[2 * i] = warp2pi((std::atan2((ly[i] - y), (lx[i] - x))) - theta);
+        nl_measurements[2 * i + 1] = std::sqrt(std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2));
+    }
+    return nc::fromiter<double>(nl_measurements.begin(), nl_measurements.end());;
 }
 
 /**
@@ -208,7 +214,8 @@ auto predict(ncD &X, ncD &P, ncD &control, ncD &control_cov, size_t k) {
 }
 
 auto update(ncD &X_pre, ncD &P_pre, ncD &measurement, ncD &measurement_cov, size_t k) {
-    auto z = measurement.reshape(6, 2);
+    auto z = measurement;
+    z.reshape(6, 2);
     auto lx = z(z.rSlice(), 0).toStlVector();
     auto ly = z(z.rSlice(), 1).toStlVector();
     auto x = X_pre(0, 0);
@@ -220,8 +227,9 @@ auto update(ncD &X_pre, ncD &P_pre, ncD &measurement, ncD &measurement_cov, size
              measurement_cov(0, 0), measurement_cov(1, 1),
              measurement_cov(0, 0), measurement_cov(1, 1),
              measurement_cov(0, 0), measurement_cov(1, 1)};
+    Q = nc::diag(Q);
     auto Ht = nc::zeros<double>(2 * k, 3 + 2 * k);
-    for (size_t i = 0; i <= k; i++) {
+    for (size_t i = 0; i < k; i++) {
         // Measurement Jacobian w.r.t. pose (2 x 3)
         ncD Hp = {{(ly[i] - y) / (std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2)),
                           -(lx[i] - x) / (std::pow((lx[i] - x), 2) + std::pow((ly[i] - y), 2)),          -1},
@@ -236,8 +244,14 @@ auto update(ncD &X_pre, ncD &P_pre, ncD &measurement, ncD &measurement_cov, size
     }
     // Kalman Gain (15 x 12)
     auto Kt = matmul<double>(matmul<double>(P_pre, Ht.transpose()),
-                             nc::linalg::inv(matmul<double>(matmul<double>(Ht, P_pre), (Ht.transpose() + Q))));
-    return std::make_tuple();
+                             nc::linalg::inv(matmul<double>(matmul<double>(Ht, P_pre), Ht.transpose()) + Q));
+    auto X_pre_vec = X_pre.toStlVector();
+    // Updated pose w/ measurement (15 x 1)
+    auto delta_observation = (measurement - nonlinear_measurement(X_pre_vec, k)).transpose();
+    auto X = X_pre + matmul<double>(Kt, delta_observation);
+    // Updated pose variance w/ measurement (15 x 15)
+    auto P = matmul<double>((nc::eye<double>(Kt.shape().rows) - matmul<double>(Kt, Ht)), P_pre);
+    return std::make_tuple(X, P);
 }
 
 int main(int argc, char **argv) {
@@ -268,10 +282,11 @@ int main(int argc, char **argv) {
                          nc::hstack({nc::zeros<double>(2 * k, 3), landmark_cov})});
     auto previous_X = X;
     draw_trajectory_and_map(X, previous_X, P, 0);
-    for (auto &slam_data: slam_data_vec_np) {
+    for (size_t i = 0; i < slam_data_vec_np.size(); i++) {
         /*Perform control actions*/
-        auto &control = slam_data->control;
+        auto &control = slam_data_vec_np[i]->control;
         auto &&[X_pre, P_pre] = predict(X, P, control, control_cov, k);
+        std::tie(X, P) = update(X_pre, P_pre, slam_data_vec_np[i + 1]->measurement, measurement_cov, k);
         break;
     }
     return 0;
